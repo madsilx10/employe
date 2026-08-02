@@ -1,7 +1,7 @@
 const fs = require('fs');
 const readline = require('readline');
 
-const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I7wHoZeT%2FIs1%2FfDv3FMw%3D';
+const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAnNwlzUejRCOuH5E6l8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 const TWEET_ID = '2083837792615100459';
 const FOLLOW_TARGET = 'expumpemployee';
 const DONE_FILE = 'done.json';
