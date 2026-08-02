@@ -71,6 +71,16 @@ function baseHeaders(auth_token, ct0, contentType = 'application/json') {
   };
 }
 
+
+async function testAuth(auth_token, ct0) {
+  const { default: axios } = await import('axios').catch(() => ({ default: require('axios') }));
+  const h = baseHeaders(auth_token, ct0);
+  const res = await axios.get('https://x.com/i/api/1.1/account/verify_credentials.json', {
+    headers: h, validateStatus: () => true
+  });
+  return { status: res.status, name: res.data?.name, error: res.data?.errors };
+}
+
 async function followUser(auth_token, ct0) {
   const h = baseHeaders(auth_token, ct0, 'application/x-www-form-urlencoded');
   console.log('[DEBUG] Follow headers:', JSON.stringify({
@@ -139,6 +149,9 @@ async function postComment(auth_token, ct0, comment) {
 async function processAccount(account, comment, idx, done, followed) {
   const key = doneKey(account);
 
+  // verify credentials first
+  const authTest = await testAuth(account.auth_token, account.ct0);
+  console.log(`[${idx}] 🔑 Auth check: ${authTest.status} ${authTest.name || JSON.stringify(authTest.error)}`);
   if (done[key]) {
     console.log(`[${idx}] ⏭  Skip — sudah komen sebelumnya`);
     return;
