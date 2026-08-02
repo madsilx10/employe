@@ -72,11 +72,17 @@ function baseHeaders(auth_token, ct0, contentType = 'application/json') {
 }
 
 async function followUser(auth_token, ct0) {
+  const h = baseHeaders(auth_token, ct0, 'application/x-www-form-urlencoded');
+  console.log('[DEBUG] Follow headers:', JSON.stringify({
+    authorization: h.authorization.slice(0, 30) + '...',
+    cookie: h.cookie.slice(0, 40) + '...',
+    'x-csrf-token': h['x-csrf-token'].slice(0, 10) + '...',
+  }));
   try {
     const res = await axios.post(
       'https://x.com/i/api/1.1/friendships/create.json',
       `screen_name=${FOLLOW_TARGET}&include_entities=false&skip_status=true`,
-      { headers: baseHeaders(auth_token, ct0, 'application/x-www-form-urlencoded'), validateStatus: () => true }
+      { headers: h, validateStatus: () => true }
     );
     return { ok: res.status >= 200 && res.status < 300, status: res.status, data: res.data };
   } catch(e) {
