@@ -1,3 +1,4 @@
+const axios = require('axios');
 const fs = require('fs');
 const readline = require('readline');
 
@@ -71,13 +72,16 @@ function baseHeaders(auth_token, ct0, contentType = 'application/json') {
 }
 
 async function followUser(auth_token, ct0) {
-  const res = await fetch('https://x.com/i/api/1.1/friendships/create.json', {
-    method: 'POST',
-    headers: baseHeaders(auth_token, ct0, 'application/x-www-form-urlencoded'),
-    body: `screen_name=${FOLLOW_TARGET}&include_entities=false&skip_status=true`
-  });
-  const data = await res.json();
-  return { ok: res.ok, status: res.status, data };
+  try {
+    const res = await axios.post(
+      'https://x.com/i/api/1.1/friendships/create.json',
+      `screen_name=${FOLLOW_TARGET}&include_entities=false&skip_status=true`,
+      { headers: baseHeaders(auth_token, ct0, 'application/x-www-form-urlencoded'), validateStatus: () => true }
+    );
+    return { ok: res.status >= 200 && res.status < 300, status: res.status, data: res.data };
+  } catch(e) {
+    return { ok: false, status: 0, data: { error: e.message } };
+  }
 }
 
 async function postComment(auth_token, ct0, comment) {
@@ -114,13 +118,16 @@ async function postComment(auth_token, ct0, comment) {
     responsive_web_enhance_cards_enabled: false
   };
 
-  const res = await fetch('https://x.com/i/api/graphql/wUgPBh9hEKhMMGIg8uDuFw/CreateTweet', {
-    method: 'POST',
-    headers: baseHeaders(auth_token, ct0),
-    body: JSON.stringify({ variables, features })
-  });
-  const data = await res.json();
-  return { ok: res.ok, status: res.status, data };
+  try {
+    const res = await axios.post(
+      'https://x.com/i/api/graphql/wUgPBh9hEKhMMGIg8uDuFw/CreateTweet',
+      { variables, features },
+      { headers: baseHeaders(auth_token, ct0), validateStatus: () => true }
+    );
+    return { ok: res.status >= 200 && res.status < 300, status: res.status, data: res.data };
+  } catch(e) {
+    return { ok: false, status: 0, data: { error: e.message } };
+  }
 }
 
 async function processAccount(account, comment, idx, done, followed) {
