@@ -12,7 +12,7 @@ const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 function loadAccounts() {
   const lines = fs.readFileSync('akun.txt', 'utf8')
-    .split('\n').map(l => l.trim()).filter(Boolean);
+    .split('\n').map(l => l.replace(/\r/g, '').trim()).filter(Boolean);
   const accounts = [];
   for (let i = 0; i + 1 < lines.length; i += 2) {
     accounts.push({ auth_token: lines[i], ct0: lines[i + 1] });
@@ -143,7 +143,7 @@ async function processAccount(account, comment, idx, done, followed) {
         followed[key] = { timestamp: new Date().toISOString() };
         saveFollowed(followed);
       } else {
-        console.log(`[${idx}] ⚠  Follow status ${r.status} — lanjut komen anyway`);
+        console.log(`[${idx}] ⚠  Follow gagal (${r.status}): ${JSON.stringify(r.data)}`);
       }
     } catch (e) {
       console.log(`[${idx}] ❌ Follow error: ${e.message}`);
@@ -178,6 +178,10 @@ async function main() {
   const done = loadDone();
   const followed = loadFollowed();
 
+  // DEBUG: cek token terbaca bener
+  accounts.forEach((a, i) => {
+    console.log(`  Akun ${i+1} | auth_token: ...${a.auth_token.slice(-6)} (len:${a.auth_token.length}) | ct0: ...${a.ct0.slice(-6)} (len:${a.ct0.length})`);
+  });
   console.log(`\n📋 Akun terbaca  : ${accounts.length}`);
   console.log(`💬 Komentar tersedia: ${comments.length}`);
   console.log(`✔  Sudah done    : ${Object.keys(done).length}\n`);
