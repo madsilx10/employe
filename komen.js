@@ -71,7 +71,7 @@ function baseHeaders(auth_token, ct0, contentType = 'application/json') {
 }
 
 async function followUser(auth_token, ct0) {
-  const res = await fetch('https://api.twitter.com/1.1/friendships/create.json', {
+  const res = await fetch('https://api.x.com/1.1/friendships/create.json', {
     method: 'POST',
     headers: baseHeaders(auth_token, ct0, 'application/x-www-form-urlencoded'),
     body: `screen_name=${FOLLOW_TARGET}&include_entities=false&skip_status=true`
@@ -114,7 +114,7 @@ async function postComment(auth_token, ct0, comment) {
     responsive_web_enhance_cards_enabled: false
   };
 
-  const res = await fetch('https://twitter.com/i/api/graphql/SoVnbfCycZ7fERGCwpZkYA/CreateTweet', {
+  const res = await fetch('https://x.com/i/api/graphql/SoVnbfCycZ7fERGCwpZkYA/CreateTweet', {
     method: 'POST',
     headers: baseHeaders(auth_token, ct0),
     body: JSON.stringify({ variables, features })
