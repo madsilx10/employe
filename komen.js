@@ -3,6 +3,17 @@ const fs = require('fs');
 const readline = require('readline');
 
 const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAnNwlzUejRCOuH5E6l8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
+
+// Debug: log actual outgoing request headers
+axios.interceptors.request.use(req => {
+  console.log('[AXIOS OUT] headers:', JSON.stringify({
+    cookie: (req.headers.cookie || req.headers.Cookie || '').slice(0, 80),
+    'x-csrf-token': req.headers['x-csrf-token'] || req.headers['X-Csrf-Token'] || 'MISSING',
+    authorization: (req.headers.authorization || '').slice(0, 30),
+  }));
+  return req;
+});
+
 const TWEET_ID = '2083837792615100459';
 const FOLLOW_TARGET = 'expumpemployee';
 const DONE_FILE = 'done.json';
@@ -13,7 +24,7 @@ const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 function loadAccounts() {
   const lines = fs.readFileSync('akun.txt', 'utf8')
-    .split('\n').map(l => l.replace(/\r/g, '').trim()).filter(Boolean);
+    .replace(/^\uFEFF/, '').split('\n').map(l => l.replace(/\r/g, '').trim()).filter(Boolean);
   const accounts = [];
   for (let i = 0; i + 1 < lines.length; i += 2) {
     accounts.push({ auth_token: lines[i], ct0: lines[i + 1] });
@@ -71,6 +82,24 @@ function baseHeaders(auth_token, ct0, contentType = 'application/json') {
   };
 }
 
+
+
+async function curlTest(auth_token, ct0) {
+  const { execSync } = require('child_process');
+  try {
+    const out = execSync(
+      `curl -s -o /dev/null -w '%{http_code}' -X GET 'https://x.com/i/api/1.1/account/verify_credentials.json' \
+      -H 'Authorization: Bearer ${BEARER}' \
+      -H 'x-csrf-token: ${ct0}' \
+      -H 'Cookie: auth_token=${auth_token}; ct0=${ct0}' \
+      -H 'User-Agent: Mozilla/5.0'`,
+      { encoding: 'utf8' }
+    );
+    console.log('[CURL TEST] status:', out.trim());
+  } catch(e) {
+    console.log('[CURL TEST] error:', e.message);
+  }
+}
 
 async function testAuth(auth_token, ct0) {
   const { default: axios } = await import('axios').catch(() => ({ default: require('axios') }));
@@ -149,6 +178,7 @@ async function postComment(auth_token, ct0, comment) {
 async function processAccount(account, comment, idx, done, followed) {
   const key = doneKey(account);
 
+  await curlTest(account.auth_token, account.ct0);
   // verify credentials first
   const authTest = await testAuth(account.auth_token, account.ct0);
   console.log(`[${idx}] 🔑 Auth check: ${authTest.status} ${authTest.name || JSON.stringify(authTest.error)}`);
