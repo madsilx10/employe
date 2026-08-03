@@ -1,11 +1,11 @@
-const axios = require('axios');
 const fs = require('fs');
 const readline = require('readline');
+const tlsClient = require('tls-client');
 
 const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 const TWEET_ID = '2083837792615100459';
 const FOLLOW_TARGET = 'expumpemployee';
-const FOLLOW_QUERY_ID = 'lKj0-madKJiNbpFgMNHerQ'; // FollowUser graphql
+const FOLLOW_QUERY_ID = 'lKj0-madKJiNbpFgMNHerQ';
 const DONE_FILE = 'done.json';
 const FOLLOWED_FILE = 'followed.json';
 
@@ -18,18 +18,16 @@ function extractCt0(cookieStr) {
 }
 
 function loadAccounts() {
-  // Format akun.txt: satu baris = full cookie string satu akun
-  const lines = fs.readFileSync('akun.txt', 'utf8')
+  return fs.readFileSync('akun.txt', 'utf8')
     .replace(/^\uFEFF/, '')
     .split('\n')
     .map(l => l.replace(/\r/g, '').trim())
-    .filter(Boolean);
-
-  return lines.map((cookieStr, i) => {
-    const ct0 = extractCt0(cookieStr);
-    if (!ct0) console.warn(`[WARN] Akun ${i+1}: ct0 tidak ditemukan di cookie string`);
-    return { cookieStr, ct0: ct0 || '' };
-  });
+    .filter(Boolean)
+    .map((cookieStr, i) => {
+      const ct0 = extractCt0(cookieStr);
+      if (!ct0) console.warn(`[WARN] Akun ${i+1}: ct0 tidak ditemukan`);
+      return { cookieStr, ct0: ct0 || '' };
+    });
 }
 
 function loadComments() {
@@ -52,6 +50,10 @@ function saveFollowed(f) { fs.writeFileSync(FOLLOWED_FILE, JSON.stringify(f, nul
 
 function doneKey(account) { return account.cookieStr.slice(0, 20); }
 
+function makeSession() {
+  return new tlsClient.Session({ tlsClientIdentifier: 'chrome_124' });
+}
+
 function baseHeaders(cookieStr, ct0, contentType = 'application/json') {
   return {
     'authorization': `Bearer ${BEARER}`,
@@ -66,40 +68,36 @@ function baseHeaders(cookieStr, ct0, contentType = 'application/json') {
     'referer': 'https://x.com/',
     'accept': '*/*',
     'accept-language': 'en-US,en;q=0.9',
-    'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
-    'sec-fetch-dest': 'empty',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-site': 'same-origin',
   };
 }
 
 async function getUserId(account) {
-  const { cookieStr, ct0 } = account;
-  // Pakai REST lookup
-  const res = await axios.get(
+  const session = makeSession();
+  const res = await session.get(
     `https://x.com/i/api/1.1/users/show.json?screen_name=${FOLLOW_TARGET}`,
-    { headers: baseHeaders(cookieStr, ct0), validateStatus: () => true }
+    { headers: baseHeaders(account.cookieStr, account.ct0) }
   );
-  console.log("[DEBUG getUserId]", res.status, JSON.stringify(res.data).slice(0,200));
-  return res.data?.id_str || null;
+  const data = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
+  return data?.id_str || null;
 }
 
 async function followUser(account) {
-  const { cookieStr, ct0 } = account;
   const userId = await getUserId(account);
   if (!userId) return { ok: false, status: 0, data: { error: 'user id not found' } };
-  const res = await axios.post(
+
+  const session = makeSession();
+  const res = await session.post(
     `https://x.com/i/api/graphql/${FOLLOW_QUERY_ID}/FollowUser`,
-    { variables: { userId }, queryId: FOLLOW_QUERY_ID },
-    { headers: baseHeaders(cookieStr, ct0), validateStatus: () => true }
+    {
+      headers: baseHeaders(account.cookieStr, account.ct0),
+      body: JSON.stringify({ variables: { userId }, queryId: FOLLOW_QUERY_ID })
+    }
   );
-  return { ok: res.status >= 200 && res.status < 300, status: res.status, data: res.data };
+  const data = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
+  return { ok: res.status >= 200 && res.status < 300, status: res.status, data };
 }
 
 async function postComment(account, comment) {
-  const { cookieStr, ct0 } = account;
   const variables = {
     tweet_text: comment,
     reply: { in_reply_to_tweet_id: TWEET_ID, exclude_reply_user_ids: [] },
@@ -128,12 +126,17 @@ async function postComment(account, comment) {
     responsive_web_text_conversations_enabled: false,
     responsive_web_enhance_cards_enabled: false
   };
-  const res = await axios.post(
+
+  const session = makeSession();
+  const res = await session.post(
     'https://x.com/i/api/graphql/wUgPBh9hEKhMMGIg8uDuFw/CreateTweet',
-    { variables, features },
-    { headers: baseHeaders(cookieStr, ct0), validateStatus: () => true }
+    {
+      headers: baseHeaders(account.cookieStr, account.ct0),
+      body: JSON.stringify({ variables, features })
+    }
   );
-  return { ok: res.status >= 200 && res.status < 300, status: res.status, data: res.data };
+  const data = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
+  return { ok: res.status >= 200 && res.status < 300, status: res.status, data };
 }
 
 async function processAccount(account, comment, idx, done, followed) {
@@ -144,7 +147,6 @@ async function processAccount(account, comment, idx, done, followed) {
     return;
   }
 
-  // FOLLOW
   if (followed[key]) {
     console.log(`[${idx}] ⏭  Follow skip — sudah follow`);
   } else {
@@ -164,10 +166,9 @@ async function processAccount(account, comment, idx, done, followed) {
   }
 
   const jeda1 = rand(2000, 10000);
-  console.log(`[${idx}] ⏳ Jeda ${(jeda1 / 1000).toFixed(1)}s sebelum komen...`);
+  console.log(`[${idx}] ⏳ Jeda ${(jeda1/1000).toFixed(1)}s sebelum komen...`);
   await sleep(jeda1);
 
-  // COMMENT
   console.log(`[${idx}] 💬 Komen: "${comment}"`);
   try {
     const r = await postComment(account, comment);
@@ -177,7 +178,7 @@ async function processAccount(account, comment, idx, done, followed) {
       done[key] = { comment, timestamp: new Date().toISOString() };
       saveDone(done);
     } else {
-      console.log(`[${idx}] ⚠  Komen gagal (${r.status}): ${JSON.stringify(r.data).slice(0, 300)}`);
+      console.log(`[${idx}] ⚠  Komen gagal (${r.status}): ${JSON.stringify(r.data?.errors || r.data).slice(0, 200)}`);
     }
   } catch (e) {
     console.log(`[${idx}] ❌ Komen error: ${e.message}`);
@@ -190,9 +191,9 @@ async function main() {
   const done = loadDone();
   const followed = loadFollowed();
 
-  console.log(`\n📋 Akun terbaca     : ${accounts.length}`);
-  console.log(`💬 Komentar tersedia : ${comments.length}`);
-  console.log(`✔  Sudah done        : ${Object.keys(done).length}\n`);
+  console.log(`\n📋 Akun      : ${accounts.length}`);
+  console.log(`💬 Komentar  : ${comments.length}`);
+  console.log(`✔  Done      : ${Object.keys(done).length}\n`);
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const ask = (q) => new Promise(r => rl.question(q, r));
@@ -216,15 +217,15 @@ async function main() {
 
   if (start < 0 || start >= accounts.length) { console.log('❌ Nomor akun tidak valid'); process.exit(1); }
 
-  console.log(`\n🚀 Proses akun ${start + 1} s/d ${end + 1}\n`);
+  console.log(`\n🚀 Proses akun ${start+1} s/d ${end+1}\n`);
 
   for (let i = start; i <= end; i++) {
     const comment = comments[i];
-    if (!comment) { console.log(`[${i+1}] ⚠  Komen ke-${i+1} tidak ada di komen.txt, skip`); continue; }
-    await processAccount(accounts[i], comment, i + 1, done, followed);
+    if (!comment) { console.log(`[${i+1}] ⚠  Komen ke-${i+1} tidak ada, skip`); continue; }
+    await processAccount(accounts[i], comment, i+1, done, followed);
     if (i < end) {
       const jeda2 = rand(5000, 35000);
-      console.log(`⏳ Jeda ${(jeda2/1000).toFixed(1)}s sebelum akun berikutnya...\n`);
+      console.log(`⏳ Jeda ${(jeda2/1000).toFixed(1)}s...\n`);
       await sleep(jeda2);
     }
   }
