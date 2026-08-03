@@ -77,11 +77,12 @@ function baseHeaders(cookieStr, ct0, contentType = 'application/json') {
 
 async function getUserId(account) {
   const { cookieStr, ct0 } = account;
+  // Pakai REST lookup
   const res = await axios.get(
-    `https://x.com/i/api/graphql/G3KGOASz96M-Qu0nwmGXNg/UserByScreenName?variables=${encodeURIComponent(JSON.stringify({ screen_name: FOLLOW_TARGET, withSafetyModeUserFields: true }))}&features=${encodeURIComponent(JSON.stringify({ hidden_profile_likes_enabled: true, hidden_profile_subscriptions_enabled: true, rweb_tipjar_consumption_enabled: true, responsive_web_graphql_exclude_directive_enabled: true, verified_phone_label_enabled: false, subscriptions_verification_info_is_identity_verified_enabled: true, subscriptions_verification_info_verified_since_enabled: true, highlights_tweets_tab_ui_enabled: true, responsive_web_twitter_article_notes_tab_enabled: true, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, responsive_web_graphql_timeline_navigation_enabled: true }))}`,
+    `https://x.com/i/api/1.1/users/show.json?screen_name=${FOLLOW_TARGET}`,
     { headers: baseHeaders(cookieStr, ct0), validateStatus: () => true }
   );
-  return res.data?.data?.user?.result?.rest_id || null;
+  return res.data?.id_str || null;
 }
 
 async function followUser(account) {
@@ -128,7 +129,7 @@ async function postComment(account, comment) {
   };
   const res = await axios.post(
     'https://x.com/i/api/graphql/wUgPBh9hEKhMMGIg8uDuFw/CreateTweet',
-    { variables, features, queryId: 'wUgPBh9hEKhMMGIg8uDuFw' },
+    { variables, features },
     { headers: baseHeaders(cookieStr, ct0), validateStatus: () => true }
   );
   return { ok: res.status >= 200 && res.status < 300, status: res.status, data: res.data };
