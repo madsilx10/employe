@@ -82,6 +82,7 @@ async function getUserId(account) {
     `https://x.com/i/api/1.1/users/show.json?screen_name=${FOLLOW_TARGET}`,
     { headers: baseHeaders(cookieStr, ct0), validateStatus: () => true }
   );
+  console.log("[DEBUG getUserId]", res.status, JSON.stringify(res.data).slice(0,200));
   return res.data?.id_str || null;
 }
 
@@ -176,7 +177,7 @@ async function processAccount(account, comment, idx, done, followed) {
       done[key] = { comment, timestamp: new Date().toISOString() };
       saveDone(done);
     } else {
-      console.log(`[${idx}] ⚠  Komen gagal (${r.status}): ${JSON.stringify(r.data?.errors || r.data).slice(0, 200)}`);
+      console.log(`[${idx}] ⚠  Komen gagal (${r.status}): ${JSON.stringify(r.data).slice(0, 300)}`);
     }
   } catch (e) {
     console.log(`[${idx}] ❌ Komen error: ${e.message}`);
