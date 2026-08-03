@@ -66,11 +66,17 @@ function baseHeaders(auth_token, ct0, contentType = 'application/json') {
 }
 
 async function getUserId(auth_token, ct0) {
+  try {
   const res = await axios.get(
     `https://x.com/i/api/1.1/users/show.json?screen_name=${FOLLOW_TARGET}`,
     { headers: baseHeaders(auth_token, ct0), validateStatus: () => true }
   );
+  console.log('[DEBUG getUserId]', res.status, JSON.stringify(res.data).slice(0,200));
   return res.data?.id_str || null;
+  } catch(e) {
+    console.log('[DEBUG getUserId ERROR]', e.message, e.code);
+    return null;
+  }
 }
 
 async function followUser(auth_token, ct0) {
