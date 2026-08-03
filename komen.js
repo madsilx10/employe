@@ -1,6 +1,6 @@
+const axios = require('axios');
 const fs = require('fs');
 const readline = require('readline');
-const tlsClient = require('tls-client');
 
 const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 const TWEET_ID = '2083837792615100459';
@@ -12,22 +12,17 @@ const FOLLOWED_FILE = 'followed.json';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-function extractCt0(cookieStr) {
-  const m = cookieStr.match(/(?:^|;\s*)ct0=([^;]+)/);
-  return m ? m[1].trim() : null;
-}
-
 function loadAccounts() {
-  return fs.readFileSync('akun.txt', 'utf8')
+  const lines = fs.readFileSync('akun.txt', 'utf8')
     .replace(/^\uFEFF/, '')
     .split('\n')
     .map(l => l.replace(/\r/g, '').trim())
-    .filter(Boolean)
-    .map((cookieStr, i) => {
-      const ct0 = extractCt0(cookieStr);
-      if (!ct0) console.warn(`[WARN] Akun ${i+1}: ct0 tidak ditemukan`);
-      return { cookieStr, ct0: ct0 || '' };
-    });
+    .filter(Boolean);
+  const accounts = [];
+  for (let i = 0; i + 1 < lines.length; i += 2) {
+    accounts.push({ auth_token: lines[i], ct0: lines[i + 1] });
+  }
+  return accounts;
 }
 
 function loadComments() {
@@ -48,16 +43,12 @@ function loadFollowed() {
 }
 function saveFollowed(f) { fs.writeFileSync(FOLLOWED_FILE, JSON.stringify(f, null, 2)); }
 
-function doneKey(account) { return account.cookieStr.slice(0, 20); }
+function doneKey(a) { return a.auth_token.slice(0, 16); }
 
-function makeSession() {
-  return new tlsClient.Session({ tlsClientIdentifier: 'chrome_124' });
-}
-
-function baseHeaders(cookieStr, ct0, contentType = 'application/json') {
+function baseHeaders(auth_token, ct0, contentType = 'application/json') {
   return {
     'authorization': `Bearer ${BEARER}`,
-    'cookie': cookieStr,
+    'cookie': `auth_token=${auth_token}; ct0=${ct0}`,
     'x-csrf-token': ct0,
     'content-type': contentType,
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -68,36 +59,32 @@ function baseHeaders(cookieStr, ct0, contentType = 'application/json') {
     'referer': 'https://x.com/',
     'accept': '*/*',
     'accept-language': 'en-US,en;q=0.9',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
   };
 }
 
-async function getUserId(account) {
-  const session = makeSession();
-  const res = await session.get(
+async function getUserId(auth_token, ct0) {
+  const res = await axios.get(
     `https://x.com/i/api/1.1/users/show.json?screen_name=${FOLLOW_TARGET}`,
-    { headers: baseHeaders(account.cookieStr, account.ct0) }
+    { headers: baseHeaders(auth_token, ct0), validateStatus: () => true }
   );
-  const data = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
-  return data?.id_str || null;
+  return res.data?.id_str || null;
 }
 
-async function followUser(account) {
-  const userId = await getUserId(account);
+async function followUser(auth_token, ct0) {
+  const userId = await getUserId(auth_token, ct0);
   if (!userId) return { ok: false, status: 0, data: { error: 'user id not found' } };
-
-  const session = makeSession();
-  const res = await session.post(
+  const res = await axios.post(
     `https://x.com/i/api/graphql/${FOLLOW_QUERY_ID}/FollowUser`,
-    {
-      headers: baseHeaders(account.cookieStr, account.ct0),
-      body: JSON.stringify({ variables: { userId }, queryId: FOLLOW_QUERY_ID })
-    }
+    { variables: { userId }, queryId: FOLLOW_QUERY_ID },
+    { headers: baseHeaders(auth_token, ct0), validateStatus: () => true }
   );
-  const data = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
-  return { ok: res.status >= 200 && res.status < 300, status: res.status, data };
+  return { ok: res.status >= 200 && res.status < 300, status: res.status, data: res.data };
 }
 
-async function postComment(account, comment) {
+async function postComment(auth_token, ct0, comment) {
   const variables = {
     tweet_text: comment,
     reply: { in_reply_to_tweet_id: TWEET_ID, exclude_reply_user_ids: [] },
@@ -126,21 +113,17 @@ async function postComment(account, comment) {
     responsive_web_text_conversations_enabled: false,
     responsive_web_enhance_cards_enabled: false
   };
-
-  const session = makeSession();
-  const res = await session.post(
+  const res = await axios.post(
     'https://x.com/i/api/graphql/wUgPBh9hEKhMMGIg8uDuFw/CreateTweet',
-    {
-      headers: baseHeaders(account.cookieStr, account.ct0),
-      body: JSON.stringify({ variables, features })
-    }
+    { variables, features },
+    { headers: baseHeaders(auth_token, ct0), validateStatus: () => true }
   );
-  const data = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
-  return { ok: res.status >= 200 && res.status < 300, status: res.status, data };
+  return { ok: res.status >= 200 && res.status < 300, status: res.status, data: res.data };
 }
 
 async function processAccount(account, comment, idx, done, followed) {
   const key = doneKey(account);
+  const { auth_token, ct0 } = account;
 
   if (done[key]) {
     console.log(`[${idx}] ⏭  Skip — sudah komen`);
@@ -152,7 +135,7 @@ async function processAccount(account, comment, idx, done, followed) {
   } else {
     console.log(`[${idx}] 🔁 Follow @${FOLLOW_TARGET}...`);
     try {
-      const r = await followUser(account);
+      const r = await followUser(auth_token, ct0);
       if (r.ok) {
         console.log(`[${idx}] ✅ Follow OK`);
         followed[key] = { timestamp: new Date().toISOString() };
@@ -171,7 +154,7 @@ async function processAccount(account, comment, idx, done, followed) {
 
   console.log(`[${idx}] 💬 Komen: "${comment}"`);
   try {
-    const r = await postComment(account, comment);
+    const r = await postComment(auth_token, ct0, comment);
     if (r.ok && r.data?.data?.create_tweet) {
       const tweetId = r.data.data.create_tweet.tweet_results?.result?.rest_id;
       console.log(`[${idx}] ✅ Komen OK${tweetId ? ` — ID: ${tweetId}` : ''}`);
